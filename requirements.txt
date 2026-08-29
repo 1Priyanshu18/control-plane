@@ -1,0 +1,7 @@
+pyyaml
+torch
+transformers
+accelerate
+bitsandbytes
+scikit-learn
+matplotlib

@@ -1,0 +1,13 @@
+{
+  "id": "priyanshub1801/control-planeai-p3-probe-train",
+  "title": "control-planeai-p3-probe-train",
+  "code_file": "kaggle_probe_train.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": ["priyanshub1801/control-planeai-code"],
+  "competition_sources": [],
+  "kernel_sources": []
+}
