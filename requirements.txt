@@ -5,3 +5,4 @@ accelerate
 bitsandbytes
 scikit-learn
 matplotlib
+numpy
