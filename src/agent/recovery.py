@@ -40,6 +40,13 @@ def recover(app, config: dict, max_regenerations: int = 3) -> tuple[dict, list[s
             f"retries_remaining {state['budget']['retries_remaining']} -> {new_budget['retries_remaining']}"
         )
         rollback_config = app.update_state(pre_llm_checkpoint.config, {"attempt": new_attempt, "budget": new_budget})
+        # update_state()'s returned config carries only checkpoint state, not the
+        # original invoke's tracing metadata -- without this, the regeneration
+        # round traces as a separate, untagged LangSmith run instead of showing
+        # up alongside the initial pass under the same tags/run_name.
+        for key in ("tags", "run_name", "metadata"):
+            if key in config:
+                rollback_config[key] = config[key]
 
         trace.append(f"REGENERATE: resuming with attempt={new_attempt}")
         state = app.invoke(None, config=rollback_config)
