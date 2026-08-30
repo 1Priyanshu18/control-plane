@@ -1,11 +1,15 @@
+import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from langsmith import Client
 
-from budget import default_budget
+from agent.budget import default_budget
+from agent.graph import build_graph
+from agent.recovery import recover
 from config import load_config
-from graph import build_graph
-from recovery import recover
 
 
 def main() -> None:

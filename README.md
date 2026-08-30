@@ -25,5 +25,5 @@ set these before running (never commit a key):
 $env:LANGCHAIN_TRACING_V2 = "true"
 $env:LANGCHAIN_API_KEY = "<your key>"
 $env:LANGCHAIN_PROJECT = "control-planeai"
-python tracing_demo.py
+python eval/tracing_demo.py
 ```

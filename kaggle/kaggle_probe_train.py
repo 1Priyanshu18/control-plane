@@ -26,14 +26,16 @@ import time
 
 subprocess.run(["pip", "install", "-q", "-U", "bitsandbytes"], check=True)
 
-CODE_DIR = None
+SRC_DIR = None
 for dirpath, _dirnames, filenames in os.walk("/kaggle/input"):
-    if "config.py" in filenames:
-        CODE_DIR = dirpath
+    if "config.py" in filenames and os.path.basename(dirpath) == "src":
+        SRC_DIR = dirpath
         break
-if CODE_DIR is None:
-    raise RuntimeError(f"could not find config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
-sys.path.insert(0, CODE_DIR)
+if SRC_DIR is None:
+    raise RuntimeError(f"could not find src/config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
+REPO_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
+sys.path.insert(0, os.path.join(REPO_ROOT, "eval"))
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,10 +44,10 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
 from baseline import length_baseline_auroc
 from config import load_config
-from data import flatten_dialogue, flatten_general, load_dialogue, load_general
+from data.data import flatten_dialogue, flatten_general, load_dialogue, load_general
+from data.split import response_level_split
+from data.tokenize_align import align_response_span, align_sub_span, get_tokenizer
 from fixtures import MARIE_CURIE_FIXTURE
-from split import response_level_split
-from tokenize_align import align_response_span, align_sub_span, get_tokenizer
 
 MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 NUM_LAYERS = 28
@@ -306,5 +308,5 @@ def main(config: dict, subset_size: int) -> None:
 
 
 if __name__ == "__main__":
-    cfg = load_config(os.path.join(CODE_DIR, "config.yaml"))
+    cfg = load_config(os.path.join(REPO_ROOT, "config.yaml"))
     main(cfg, subset_size=1500)

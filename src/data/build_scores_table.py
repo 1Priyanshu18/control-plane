@@ -1,6 +1,6 @@
 import csv
 
-from nli import nli_contradiction_score
+from detectors.nli import nli_contradiction_score
 
 IN_PATH = "artifacts/scores_partial.csv"
 OUT_PATH = "scores_table.csv"

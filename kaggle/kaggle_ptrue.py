@@ -25,24 +25,26 @@ import sys
 
 subprocess.run(["pip", "install", "-q", "-U", "bitsandbytes"], check=True)
 
-CODE_DIR = None
+SRC_DIR = None
 for dirpath, _dirnames, filenames in os.walk("/kaggle/input"):
-    if "config.py" in filenames:
-        CODE_DIR = dirpath
+    if "config.py" in filenames and os.path.basename(dirpath) == "src":
+        SRC_DIR = dirpath
         break
-if CODE_DIR is None:
-    raise RuntimeError(f"could not find config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
-sys.path.insert(0, CODE_DIR)
+if SRC_DIR is None:
+    raise RuntimeError(f"could not find src/config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
+REPO_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
+sys.path.insert(0, os.path.join(REPO_ROOT, "eval"))
 
 from sklearn.metrics import roc_auc_score
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from baseline import length_baseline_auroc
 from config import load_config
-from data import flatten_dialogue, load_dialogue
+from data.data import flatten_dialogue, load_dialogue
+from data.split import response_level_split
+from detectors.p_true import FALSE_TOKEN_IDS, TRUE_TOKEN_IDS, VARIANTS
 from fixtures import MARIE_CURIE_FIXTURE, OBVIOUSLY_FALSE_FIXTURE, OBVIOUSLY_TRUE_FIXTURE
-from p_true import FALSE_TOKEN_IDS, TRUE_TOKEN_IDS, VARIANTS
-from split import response_level_split
 
 MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
@@ -148,5 +150,5 @@ def main(config: dict, sample_size: int) -> None:
 
 
 if __name__ == "__main__":
-    cfg = load_config(os.path.join(CODE_DIR, "config.yaml"))
+    cfg = load_config(os.path.join(REPO_ROOT, "config.yaml"))
     main(cfg, sample_size=200)

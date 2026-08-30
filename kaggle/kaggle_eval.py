@@ -18,6 +18,7 @@ if _capability < 7.5:
         "minimum bitsandbytes 4-bit quantization requires; aborting before weight download."
     )
 
+import csv
 import os
 import random
 import statistics
@@ -28,23 +29,31 @@ import time
 subprocess.run(["pip", "install", "-q", "-U", "bitsandbytes", "presidio-analyzer", "spacy"], check=True)
 subprocess.run(["python", "-m", "spacy", "download", "en_core_web_lg", "-q"], check=True)
 
-CODE_DIR = None
+SRC_DIR = None
 for dirpath, _dirnames, filenames in os.walk("/kaggle/input"):
-    if "config.py" in filenames:
-        CODE_DIR = dirpath
+    if "config.py" in filenames and os.path.basename(dirpath) == "src":
+        SRC_DIR = dirpath
         break
-if CODE_DIR is None:
-    raise RuntimeError(f"could not find config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
-sys.path.insert(0, CODE_DIR)
+if SRC_DIR is None:
+    raise RuntimeError(f"could not find src/config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
+REPO_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
+sys.path.insert(0, os.path.join(REPO_ROOT, "eval"))
 
-from budget import default_budget
+from agent.budget import default_budget
+from agent.generator import _real_generate
+from agent.graph import build_graph
+from agent.recovery import recover
 from config import load_config
-from data import flatten_dialogue, load_dialogue
-from generator import _real_generate
-from graph import build_graph
-from nli import nli_contradiction_score
-from recovery import recover
-from split import response_level_split
+from data.data import flatten_dialogue, load_dialogue
+from data.split import response_level_split
+from detectors.nli import nli_contradiction_score
+
+RESULTS_CSV = "/kaggle/working/eval_results.csv"
+RESULTS_COLUMNS = [
+    "index", "baseline_factuality", "baseline_latency", "controlled_factuality",
+    "controlled_latency", "controlled_llm_calls", "controlled_retries", "controlled_action",
+]
 
 
 def sample_test_groups(n: int) -> list[dict]:
@@ -66,9 +75,13 @@ def main(config: dict, n_examples: int) -> None:
 
     real_config = dict(config)
     real_config["generator"] = {"name": "real"}
-    app = build_graph(real_config, policy_path=os.path.join(CODE_DIR, "policy_rules.yaml"))
+    app = build_graph(real_config, policy_path=os.path.join(REPO_ROOT, "policy_rules.yaml"))
 
     results = []
+    csv_file = open(RESULTS_CSV, "w", newline="", encoding="utf-8")
+    writer = csv.writer(csv_file)
+    writer.writerow(RESULTS_COLUMNS)
+
     for i, g in enumerate(groups):
         print(f"\n--- example {i + 1}/{len(groups)} ---")
         prompt = g["context"]
@@ -111,18 +124,20 @@ def main(config: dict, n_examples: int) -> None:
         retries_used = 3 - final_state["budget"]["retries_remaining"]
         print(f"  llm_calls_used: {llm_calls_used}, retries_used: {retries_used}")
 
-        results.append(
-            {
-                "baseline_factuality": baseline_factuality,
-                "baseline_latency": baseline_latency,
-                "controlled_factuality": controlled_factuality,
-                "controlled_latency": controlled_latency,
-                "controlled_llm_calls": llm_calls_used,
-                "controlled_retries": retries_used,
-                "controlled_action": final_state["policy_decision"]["action"],
-            }
-        )
+        row = {
+            "baseline_factuality": baseline_factuality,
+            "baseline_latency": baseline_latency,
+            "controlled_factuality": controlled_factuality,
+            "controlled_latency": controlled_latency,
+            "controlled_llm_calls": llm_calls_used,
+            "controlled_retries": retries_used,
+            "controlled_action": final_state["policy_decision"]["action"],
+        }
+        results.append(row)
+        writer.writerow([i + 1] + [row[c] for c in RESULTS_COLUMNS[1:]])
+        csv_file.flush()
 
+    csv_file.close()
     print()
     print("=" * 70)
     print(f"AGGREGATE (n={len(results)}, 1 seed, smoke scale -- not a full evaluation)")
@@ -142,9 +157,10 @@ def main(config: dict, n_examples: int) -> None:
     for r in results:
         action_counts[r["controlled_action"]] = action_counts.get(r["controlled_action"], 0) + 1
     print(f"controlled policy action distribution: {action_counts}")
+    print(f"incremental per-example results written to {RESULTS_CSV}")
 
 
 if __name__ == "__main__":
-    cfg = load_config(os.path.join(CODE_DIR, "config.yaml"))
+    cfg = load_config(os.path.join(REPO_ROOT, "config.yaml"))
     random.seed(cfg["seed"])
     main(cfg, n_examples=100)

@@ -5,7 +5,7 @@ SIGNAL_COLUMNS = ["p_input_contradict", "p_self_contradict", "p_fact_contradict"
 
 
 def main() -> None:
-    with open("scores_table.csv", encoding="utf-8") as f:
+    with open("artifacts/scores_table.csv", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     val = [r for r in rows if r["split"] == "val"]
     for r in val:

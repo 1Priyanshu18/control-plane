@@ -37,7 +37,7 @@ def _xy(rows: list[dict], columns: list[str], lengths: dict[str, dict] | None = 
 
 
 def main() -> None:
-    rows = load_scores_table("scores_table.csv")
+    rows = load_scores_table("artifacts/scores_table.csv")
     lengths = load_response_lengths("artifacts/scores_partial.csv")
 
     train_rows = [r for r in rows if r["split"] == "train"]

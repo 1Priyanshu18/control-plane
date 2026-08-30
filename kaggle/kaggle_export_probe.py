@@ -18,7 +18,6 @@ if _capability < 7.5:
         "minimum bitsandbytes 4-bit quantization requires; aborting before weight download."
     )
 
-import csv
 import os
 import random
 import subprocess
@@ -27,15 +26,18 @@ import time
 
 subprocess.run(["pip", "install", "-q", "-U", "bitsandbytes"], check=True)
 
-CODE_DIR = None
+SRC_DIR = None
 for dirpath, _dirnames, filenames in os.walk("/kaggle/input"):
-    if "config.py" in filenames:
-        CODE_DIR = dirpath
+    if "config.py" in filenames and os.path.basename(dirpath) == "src":
+        SRC_DIR = dirpath
         break
-if CODE_DIR is None:
-    raise RuntimeError(f"could not find config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
-sys.path.insert(0, CODE_DIR)
+if SRC_DIR is None:
+    raise RuntimeError(f"could not find src/config.py under /kaggle/input; tree: {list(os.walk('/kaggle/input'))}")
+REPO_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
+sys.path.insert(0, os.path.join(REPO_ROOT, "eval"))
 
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
@@ -43,10 +45,9 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
 from baseline import length_baseline_auroc
 from config import load_config
-from data import flatten_dialogue, load_dialogue
-from p_true import VARIANTS
-from split import response_level_split
-from tokenize_align import align_response_span, get_tokenizer
+from data.data import flatten_dialogue, load_dialogue
+from data.split import response_level_split
+from data.tokenize_align import align_response_span, get_tokenizer
 
 MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 BEST_LAYER = 17
@@ -73,12 +74,10 @@ def collate(tokenizer, batch_records: list[dict]) -> tuple[torch.Tensor, torch.T
 def extract_single_layer(
     model, tokenizer, rows: list[dict], layer: int, batch_size: int = 4
 ) -> list[tuple[str, torch.Tensor, int]]:
-    """Returns [(response_id, response_span_features, label), ...] for one layer."""
     results = []
     for start in range(0, len(rows), batch_size):
         batch = rows[start : start + batch_size]
         input_ids, attention_mask, aligned = collate(tokenizer, batch)
-
         with torch.no_grad():
             out = model(
                 input_ids=input_ids.to(model.device),
@@ -86,12 +85,10 @@ def extract_single_layer(
                 output_hidden_states=True,
             )
         hidden_states = out.hidden_states
-
         for i, (record, a) in enumerate(zip(batch, aligned)):
             token_start, token_end = a["token_span"]
             span_feats = hidden_states[layer][i, token_start:token_end, :].detach().to("cpu", dtype=torch.float32)
             results.append((record["response_id"], span_feats, record["label"]))
-
         del out, hidden_states
         torch.cuda.empty_cache()
     return results
@@ -148,48 +145,6 @@ def train_probe(
     return probe, auroc
 
 
-def score_with_probe(probe: nn.Linear, feats: torch.Tensor) -> float:
-    with torch.no_grad():
-        return torch.sigmoid(probe(feats)).max().item()
-
-
-def _to_prompt_text(tokenizer, messages: list[dict]) -> str:
-    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-
-def read_p_true_batch(model, tokenizer, messages_list: list[list[dict]], batch_size: int = 8) -> list[float]:
-    from p_true import FALSE_TOKEN_IDS, TRUE_TOKEN_IDS
-
-    prompts = [_to_prompt_text(tokenizer, m) for m in messages_list]
-    scores = []
-    for start in range(0, len(prompts), batch_size):
-        batch = prompts[start : start + batch_size]
-        encoded = [tokenizer(p, return_tensors=None, add_special_tokens=False)["input_ids"] for p in batch]
-        lengths = [len(ids) for ids in encoded]
-        max_len = max(lengths)
-        pad_id = tokenizer.pad_token_id
-
-        input_ids = torch.full((len(batch), max_len), pad_id, dtype=torch.long)
-        attention_mask = torch.zeros((len(batch), max_len), dtype=torch.long)
-        for i, ids in enumerate(encoded):
-            input_ids[i, : len(ids)] = torch.tensor(ids)
-            attention_mask[i, : len(ids)] = 1
-
-        with torch.no_grad():
-            out = model(input_ids=input_ids.to(model.device), attention_mask=attention_mask.to(model.device))
-
-        for i, L in enumerate(lengths):
-            logits = out.logits[i, L - 1, :].float()
-            true_mass = torch.logsumexp(logits[TRUE_TOKEN_IDS], dim=0)
-            false_mass = torch.logsumexp(logits[FALSE_TOKEN_IDS], dim=0)
-            p_true = torch.softmax(torch.stack([true_mass, false_mass]), dim=0)[0].item()
-            scores.append(p_true)
-
-        del out
-        torch.cuda.empty_cache()
-    return scores
-
-
 def main(config: dict, sample_size: int) -> None:
     records = load_dialogue()
     flat = flatten_dialogue(records)
@@ -219,13 +174,7 @@ def main(config: dict, sample_size: int) -> None:
     extracted = extract_single_layer(model, tokenizer, subset, BEST_LAYER)
     print(f"layer {BEST_LAYER} extraction time for {len(subset)} responses: {time.time() - t0:.1f}s")
 
-    split_of_response = {}
-    for r in subset_train:
-        split_of_response[r["response_id"]] = "train"
-    for r in subset_val:
-        split_of_response[r["response_id"]] = "val"
     train_ids = {r["response_id"] for r in subset_train}
-
     train_feats = [f for rid, f, lbl in extracted if rid in train_ids]
     train_labels = [lbl for rid, f, lbl in extracted if rid in train_ids]
     val_feats = [f for rid, f, lbl in extracted if rid not in train_ids]
@@ -236,43 +185,12 @@ def main(config: dict, sample_size: int) -> None:
     print(f"probe (layer {BEST_LAYER}) val AUROC: {probe_auroc:.4f} (length baseline {length_auroc:.4f}), "
           f"trained in {time.time() - t0:.1f}s")
 
-    probe_scores = {rid: score_with_probe(probe, feats) for rid, feats, lbl in extracted}
-
-    t0 = time.time()
-    ptrue_scores: dict[str, dict[str, float]] = {name: {} for name in VARIANTS}
-    for variant_name, builder in VARIANTS.items():
-        messages_list = [builder(r) for r in subset]
-        scores = read_p_true_batch(model, tokenizer, messages_list)
-        for r, s in zip(subset, scores):
-            ptrue_scores[variant_name][r["response_id"]] = s
-        auroc = roc_auc_score([r["label"] for r in subset_val], [ptrue_scores[variant_name][r["response_id"]] for r in subset_val])
-        print(f"{variant_name}: val AUROC {auroc:.4f}")
-    print(f"P(True) all variants time: {time.time() - t0:.1f}s")
-
-    out_path = "/kaggle/working/scores_partial.csv"
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            ["response_id", "split", "label", "knowledge", "context", "response",
-             "probe", "p_input_contradict", "p_self_contradict", "p_fact_contradict"]
-        )
-        for r in subset:
-            rid = r["response_id"]
-            writer.writerow([
-                rid,
-                split_of_response[rid],
-                r["label"],
-                r["knowledge"],
-                r["context"],
-                r["response"],
-                probe_scores[rid],
-                ptrue_scores["p_input_contradict"][rid],
-                ptrue_scores["p_self_contradict"][rid],
-                ptrue_scores["p_fact_contradict"][rid],
-            ])
-    print(f"wrote {out_path} with {len(subset)} rows")
+    w = probe.weight.detach().numpy().reshape(-1)
+    b = probe.bias.detach().numpy().reshape(-1)
+    np.savez("/kaggle/working/probe_weights.npz", w=w, b=b, layer=BEST_LAYER, val_auroc=probe_auroc)
+    print(f"saved probe_weights.npz: w shape {w.shape}, b {b}, layer {BEST_LAYER}, val_auroc {probe_auroc:.4f}")
 
 
 if __name__ == "__main__":
-    cfg = load_config(os.path.join(CODE_DIR, "config.yaml"))
+    cfg = load_config(os.path.join(REPO_ROOT, "config.yaml"))
     main(cfg, sample_size=1000)

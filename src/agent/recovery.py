@@ -1,6 +1,6 @@
-from budget import spend_retry
-from nli import nli_contradiction_score
-from tools import search_tool
+from agent.budget import spend_retry
+from agent.tools import search_tool
+from detectors.nli import nli_contradiction_score
 
 RECOVERABLE_ACTIONS = ("verify", "retry", "regenerate")
 

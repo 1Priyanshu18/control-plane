@@ -1,6 +1,6 @@
 from typing import Callable
 
-from nli import nli_contradiction_score
+from detectors.nli import nli_contradiction_score
 
 _PII_ANALYZER = None
 _TOXICITY_CLF = None

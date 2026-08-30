@@ -1,9 +1,9 @@
 from typing import Callable
 
-from budget import BudgetState, spend_verification_call
-from detectors import factuality_check, injection_check, pii_check, self_consistency_check, toxicity_check
-from risk_state import RiskState, empty_risk_state
-from tools import TOOL_RISK_TABLE
+from agent.budget import BudgetState, spend_verification_call
+from agent.risk_state import RiskState, empty_risk_state
+from agent.tools import TOOL_RISK_TABLE
+from detectors.detectors import factuality_check, injection_check, pii_check, self_consistency_check, toxicity_check
 
 NEAR_THRESHOLD_BAND = (0.2, 0.8)
 

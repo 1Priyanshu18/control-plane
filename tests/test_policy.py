@@ -1,6 +1,6 @@
-from policy import evaluate, load_policy
+from agent.policy import evaluate, load_policy
 
-POLICY = load_policy()
+POLICY = load_policy("policy_rules.yaml")
 
 
 def _base_risk() -> dict:
