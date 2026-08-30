@@ -1,0 +1,60 @@
+version: 2
+rules:
+- name: block_injection
+  field: injection_risk
+  operator: gte
+  threshold: 0.9
+  action: BLOCK
+  reason: tool output strongly matches known prompt injection patterns
+- name: block_toxic
+  field: safety_risk
+  operator: gte
+  threshold: 0.8
+  action: BLOCK
+  reason: response toxicity is above threshold
+- name: restrict_high_risk_tool
+  field: tool_risk
+  operator: eq
+  threshold: high
+  action: MODIFY
+  modify_action: restrict_tool
+  reason: tool is side-effecting and requires explicit authorization
+- name: redact_pii
+  field: privacy_risk_score
+  operator: gte
+  threshold: 0.7
+  action: MODIFY
+  modify_action: redact
+  reason: response contains likely PII above threshold
+- name: regenerate_on_uncertainty
+  field: uncertainty_risk
+  operator: gte
+  threshold: 0.5
+  action: MODIFY
+  modify_action: regenerate
+  reason: self-consistency check found disagreement across samples
+- name: verify_high_factuality
+  field: factuality_risk
+  operator: gte
+  threshold: 0.8
+  action: MODIFY
+  modify_action: verify
+  reason: factuality signal indicates likely fabrication
+- name: retry_moderate_factuality
+  field: factuality_risk
+  operator: gte
+  threshold: 0.4
+  action: MODIFY
+  modify_action: retry
+  reason: factuality signal is moderately elevated
+- name: allow_default
+  field: factuality_risk
+  operator: always
+  threshold: null
+  action: ALLOW
+  reason: no risk dimension exceeded its threshold
+change_log:
+- version: 2
+  approved_by: demo-reviewer
+  reason: Phase 11 DoD demonstration -- no actual threshold change, proving the gate
+    mechanism

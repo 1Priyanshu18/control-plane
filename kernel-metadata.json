@@ -1,7 +1,7 @@
 {
-  "id": "priyanshub1801/control-planeai-p3-export-probe",
-  "title": "control-planeai-p3-export-probe",
-  "code_file": "kaggle_export_probe.py",
+  "id": "priyanshub1801/control-planeai-p10-eval",
+  "title": "control-planeai-p10-eval",
+  "code_file": "kaggle_eval.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": true,

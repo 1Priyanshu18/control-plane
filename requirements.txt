@@ -6,3 +6,8 @@ bitsandbytes
 scikit-learn
 matplotlib
 numpy
+langgraph
+presidio-analyzer
+spacy
+pytest
+langsmith
